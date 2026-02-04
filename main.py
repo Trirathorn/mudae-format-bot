@@ -1,19 +1,16 @@
 import discord, re, os, threading
 from flask import Flask
 
-# --- Tiny Web Server for Health Checks ---
+# --- Health Check Server (Keeps UptimeRobot Happy) ---
 app = Flask(__name__)
 @app.route('/')
-def health_check():
-    return "Bot is alive!", 200
+def health(): return "OK", 200
 
 def run_web():
-    # Koyeb uses port 8000 by default for health checks
     app.run(host='0.0.0.0', port=8000)
 
-# Start the web server in a separate thread
 threading.Thread(target=run_web, daemon=True).start()
-# ------------------------------------------
+# -----------------------------------------------------
 
 intents = discord.Intents.default()
 intents.message_content = True 
@@ -30,13 +27,24 @@ async def on_message(message):
     if message.content.startswith("-f"):
         raw_text = message.content[2:].strip()
         names = []
+        
         for line in raw_text.split('\n'):
             line = line.strip()
             if not line: continue
             
-            # Updated Regex: Priority to standard # - Name - Series
-            std_match = re.search(r"^#\d+\s+-\s+(.*?)\s+-\s+.*", line)
-            mmrk_match = re.search(r"^#\d+\s+-\s+(.*?)(?:\s+\d[\d,]*\s+ka|$)", line)
+            # --- STRICT PATTERN MATCHING ---
+            
+            # 1. Standard Pattern: #123 - Name - Series
+            # Logic: Look for "#<digits> - ", then capture content, then force a " - " after it.
+            std_match = re.search(r"^#\d+\s+-\s+(.*?)\s+-\s+.*$", line)
+            
+            # 2. MMRK Pattern: #4 - Name 1,244 ka
+            # Logic: Look for "#<digits> - ", capture content, and MUST end with "ka".
+            # The '$' at the end is crucial—it prevents it from matching standard lines.
+            mmrk_match = re.search(r"^#\d+\s+-\s+(.*?)\s+\d[\d,]*\s+ka$", line)
+            
+            # 3. Wishlist Pattern: Kirby ❌
+            # Logic: Grab everything until it hits a known Mudae emoji.
             emoji_match = re.search(r"^(.*?)(?:\s+[❌✅🔐⭐+%]|$)", line)
 
             if std_match:
@@ -44,11 +52,13 @@ async def on_message(message):
             elif mmrk_match:
                 names.append(mmrk_match.group(1).strip())
             elif emoji_match:
-                name = emoji_match.group(1).strip()
-                if name and not name.startswith("#"):
-                    names.append(name)
+                # Fallback: Only accept if it doesn't look like a broken # rank line
+                val = emoji_match.group(1).strip()
+                if val and not val.startswith("#"):
+                    names.append(val)
 
         if names:
+            # Send the clean list
             await message.channel.send(f"```{'$'.join(names)}```")
 
 client.run(os.environ.get('TOKEN'))
