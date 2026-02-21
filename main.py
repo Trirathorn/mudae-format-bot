@@ -16,6 +16,30 @@ intents = discord.Intents.default()
 intents.message_content = True 
 client = discord.Client(intents=intents)
 
+def clean_mudae_line(line):
+    # 1. Remove Discord bold markdown
+    line = line.replace("**", "").strip()
+    if not line: return None
+    
+    # 2. Remove Rank Prefix (e.g., "#4 - " or "#4 ")
+    line = re.sub(r"^#\d+\s+(?:-\s+)?", "", line)
+    
+    # 3. Remove Values (ka / sp) -> catches " 1,244 ka" and " 1,244 ka 4,000 sp"
+    line = re.sub(r"\s+\d[\d,]*\s*(?:ka|sp).*$", "", line)
+    
+    # 4. Remove Keys (· :bronzekey: (1) or · <:bronzekey:id>)
+    line = re.sub(r"\s+·\s+.*$", "", line)
+    
+    # 5. Remove Emojis and percentages
+    line = re.sub(r"\s+[❌✅🔐⭐+%].*$", "", line)
+    
+    # 6. Remove Series Name (Standard Format: "Name - Series")
+    # Splits from the right to protect character names that contain hyphens
+    if " - " in line:
+        line = line.rsplit(" - ", 1)[0]
+        
+    return line.strip()
+
 @client.event
 async def on_ready():
     print(f'Bot online as {client.user}')
@@ -29,36 +53,11 @@ async def on_message(message):
         names = []
         
         for line in raw_text.split('\n'):
-            line = line.strip()
-            if not line: continue
-            
-            # --- STRICT PATTERN MATCHING ---
-            
-            # 1. Standard Pattern: #123 - Name - Series
-            # Logic: Look for "#<digits> - ", then capture content, then force a " - " after it.
-            std_match = re.search(r"^#\d+\s+-\s+(.*?)\s+-\s+.*$", line)
-            
-            # 2. MMRK Pattern: #4 - Name 1,244 ka
-            # Logic: Look for "#<digits> - ", capture content, and MUST end with "ka".
-            # The '$' at the end is crucial—it prevents it from matching standard lines.
-            mmrk_match = re.search(r"^#\d+\s+-\s+(.*?)\s+\d[\d,]*\s+ka$", line)
-            
-            # 3. Wishlist Pattern: Kirby ❌
-            # Logic: Grab everything until it hits a known Mudae emoji.
-            emoji_match = re.search(r"^(.*?)(?:\s+[❌✅🔐⭐+%]|$)", line)
-
-            if std_match:
-                names.append(std_match.group(1).strip())
-            elif mmrk_match:
-                names.append(mmrk_match.group(1).strip())
-            elif emoji_match:
-                # Fallback: Only accept if it doesn't look like a broken # rank line
-                val = emoji_match.group(1).strip()
-                if val and not val.startswith("#"):
-                    names.append(val)
+            cleaned_name = clean_mudae_line(line)
+            if cleaned_name:
+                names.append(cleaned_name)
 
         if names:
-            # Send the clean list
             await message.channel.send(f"```{'$'.join(names)}```")
 
 client.run(os.environ.get('TOKEN'))
