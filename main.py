@@ -1,7 +1,10 @@
-import discord, re, os, threading
+import discord
+import re
+import os
+import threading
 from flask import Flask
 
-# --- Health Check Server (Keeps UptimeRobot Happy) ---
+# --- Health Check Server (Keeps Koyeb/UptimeRobot Happy) ---
 app = Flask(__name__)
 @app.route('/')
 def health(): return "OK", 200
@@ -10,7 +13,7 @@ def run_web():
     app.run(host='0.0.0.0', port=8000)
 
 threading.Thread(target=run_web, daemon=True).start()
-# -----------------------------------------------------
+# -----------------------------------------------------------
 
 intents = discord.Intents.default()
 intents.message_content = True 
@@ -21,8 +24,8 @@ def clean_mudae_line(line):
     line = line.replace("**", "").strip()
     if not line: return None
     
-    # 2. Remove Rank Prefix (e.g., "#4 - " or "#4 ")
-    line = re.sub(r"^#\d+\s+(?:-\s+)?", "", line)
+    # 2. Remove Rank Prefix (Handles commas in numbers > 999!)
+    line = re.sub(r"^#[\d,]+\s+(?:-\s+)?", "", line)
     
     # 3. Remove Values (ka / sp) -> catches " 1,244 ka" and " 1,244 ka 4,000 sp"
     line = re.sub(r"\s+\d[\d,]*\s*(?:ka|sp).*$", "", line)
@@ -46,17 +49,26 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if message.author == client.user: return
+    # Ignore messages from the bot itself
+    if message.author == client.user: 
+        return
     
+    # Trigger on '-f'
     if message.content.startswith("-f"):
         raw_text = message.content[2:].strip()
         names = []
         
         for line in raw_text.split('\n'):
+            line = line.strip()
+            if not line: continue
+            
             cleaned_name = clean_mudae_line(line)
-            if cleaned_name:
+            
+            # Make sure the name isn't empty and doesn't still look like a broken rank
+            if cleaned_name and not cleaned_name.startswith("#"):
                 names.append(cleaned_name)
 
+        # Send the final formatted string
         if names:
             await message.channel.send(f"```{'$'.join(names)}```")
 
